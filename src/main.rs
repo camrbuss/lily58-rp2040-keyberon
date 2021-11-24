@@ -10,11 +10,9 @@ pub static BOOT2: [u8; 256] = rp2040_boot2::BOOT_LOADER_W25Q080;
 
 #[rtic::app(device = crate::hal::pac, peripherals = true, dispatchers = [PIO0_IRQ_0])]
 mod app {
-
-    use cortex_m::prelude::_embedded_hal_watchdog_Watchdog;
-    use cortex_m::prelude::_embedded_hal_watchdog_WatchdogEnable;
     use embedded_hal::digital::v2::InputPin;
-    use embedded_time::duration::units::*;
+    use embedded_hal::watchdog::{Watchdog, WatchdogEnable};
+    use embedded_time::duration::Extensions;
     use hal::gpio::DynPin;
     use hal::usb::UsbBus;
     use keyberon::action;
@@ -51,25 +49,25 @@ mod app {
     #[rustfmt::skip]
     pub static LAYERS: keyberon::layout::Layers<CustomActions> = keyberon::layout::layout! {
         { // 0
-            [ Escape 1 2 3 4 5 6 7 8 9 0 '`' ]
-            [ Tab Q W E R T Y U I O P Enter ]
-            [ LShift A S D F G H J K L ; RShift ]
-            [ LAlt Z X C V B N M , . / RCtrl ]
-            [ t LCtrl LGui (1) BSpace {UF2} {UF2} {L4_SPACE} (2) RGui RCtrl t ]
+            [ Escape 1     2    3   4      5     6     7          8   9    0     '`'    ]
+            [ Tab    Q     W    E   R      T     Y     U          I   O    P     Enter  ]
+            [ LShift A     S    D   F      G     H     J          K   L    ;     RShift ]
+            [ LAlt   Z     X    C   V      B     N     M          ,   .    /     RCtrl  ]
+            [ t      LCtrl LGui (1) BSpace {UF2} {UF2} {L4_SPACE} (2) RGui RCtrl t      ]
         }
         { // 1
-            [ t F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 Delete ]
-            [ t ! @ # $ % t '_' | = + t ]
-            [ t '{' '}' '(' ')' t '`' ~ / '"' Quote t ]
-            [ t '[' ']' ^ & * t - '\\' t t t ]
-            [ t t t t t {RESET} {RESET} (3) t t t t ]
+            [ t t t t t t t t t t t t ]
+            [ t t t t t t * 7 8 9 + t ]
+            [ t t t t t t / 4 5 6 - t ]
+            [ t t t t t t t 1 2 3 . t ]
+            [ t t t t t t t 0 t t t t ]
         }
         { // 2
-            [ t t t t t t t t t t t t ]
-            [ t t t t t t t t t t t t ]
-            [ t t t t t t t t t t t t ]
-            [ t t t t t t t t t t t t ]
-            [ t t t t t t t t t t t t ]
+            [ MediaSleep F1  F2  F3  F4  F5      F6      F7  F8   F9  F10   Delete ]
+            [ t          !   @   #   $   %       t       '_' |    =   +     t      ]
+            [ t          '{' '}' '(' ')' t       '`'     ~   /    '"' Quote t      ]
+            [ t          '[' ']' ^   &   *       t       -   '\\' t   t     t      ]
+            [ t          t   t   t   t   {RESET} {RESET} t   t    t   t     t      ]
         }
         { // 3
             [ t t t t t t t t t t t t ]
@@ -79,11 +77,11 @@ mod app {
             [ t t t t t t t t t t t t ]
         }
         { // 4
+            [ t t t t t t t             t              t            t          t       t ]
             [ t t t t t t MediaNextSong MediaPlayPause MediaVolDown MediaVolUp PScreen t ]
-            [ t t t t t t t t t t t t ]
-            [ t t t t t t t t t t t t ]
-            [ t t t t t t t t t t t t ]
-            [ t t t t t t t t t t t t ]
+            [ t t t t t t Left          Down           Up           Right      t       t ]
+            [ t t t t t t t             Home           PgDown       PgUp       End     t ]
+            [ t t t t Delete t t             t              t            t          t       t ]
         }
     };
 
@@ -111,6 +109,7 @@ mod app {
     fn init(c: init::Context) -> (Shared, Local, init::Monotonics) {
         let mut resets = c.device.RESETS;
         let mut watchdog = hal::watchdog::Watchdog::new(c.device.WATCHDOG);
+        watchdog.pause_on_debug(false);
 
         let clocks = hal::clocks::init_clocks_and_plls(
             XTAL_FREQ_HZ,
@@ -309,7 +308,6 @@ mod app {
             .events(c.shared.matrix.get().unwrap())
             .map(c.shared.transform)
         {
-            handle_event::spawn(Some(event)).unwrap();
             let mut byte: u8;
             byte = event.coord().1;
             byte |= (event.coord().0 & 0b0000_0111) << 4;
@@ -319,6 +317,7 @@ mod app {
             c.shared
                 .uart
                 .lock(|u| u.uartdr.write(|w| unsafe { w.data().bits(byte) }));
+            handle_event::spawn(Some(event)).unwrap();
         }
         handle_event::spawn(None).unwrap();
     }
